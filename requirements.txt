@@ -1,0 +1,10 @@
+yfinance
+pandas
+numpy
+scikit-learn
+requests
+fastapi
+uvicorn[standard]
+python-dotenv
+matplotlib
+ta

@@ -1,0 +1,130 @@
+.signal-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.signal-placeholder {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px 20px;
+  font-size: 1.1rem;
+}
+
+.signal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.signal-header h3 {
+  margin: 0;
+  font-size: 1.3rem;
+  color: var(--accent);
+}
+
+.timestamp {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.signal-badge-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.signal-badge {
+  border: 2px solid currentColor;
+  border-radius: 12px;
+  padding: 16px 32px;
+  min-width: 200px;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.signal-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  display: block;
+  letter-spacing: 1px;
+}
+
+.signal-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.metric {
+  background: var(--surface-light);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  text-align: center;
+}
+
+.metric-label {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.metric-value {
+  display: block;
+  color: var(--text);
+  font-size: 1.2rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.strength-container {
+  background: var(--surface-light);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.strength-label {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.strength-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--surface);
+  border-radius: 4px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.strength-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+  border-radius: 4px;
+}
+
+.strength-value {
+  display: block;
+  text-align: right;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

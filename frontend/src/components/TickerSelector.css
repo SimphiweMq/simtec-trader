@@ -1,0 +1,130 @@
+.ticker-selector {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.selector-header {
+  margin-bottom: 16px;
+}
+
+.selector-header h2 {
+  font-size: 1.5rem;
+  color: var(--accent);
+  margin: 0;
+}
+
+.selector-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.selector-content {
+  margin-bottom: 16px;
+}
+
+.jse-controls label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.jse-controls select,
+.forex-controls input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--surface-light);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.jse-controls select:hover,
+.forex-controls input:hover {
+  border-color: var(--accent);
+}
+
+.jse-controls select:focus,
+.forex-controls input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.1);
+}
+
+.jse-controls select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.currency-pair {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.currency-pair input {
+  flex: 1;
+  text-transform: uppercase;
+}
+
+.currency-pair .sep {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 1.2rem;
+}
+
+.load-btn {
+  width: 100%;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, var(--accent) 0%, #00a8cc 100%);
+  border: none;
+  border-radius: 6px;
+  color: var(--bg);
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.load-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 212, 255, 0.3);
+}
+
+.load-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.load-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
