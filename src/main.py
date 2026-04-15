@@ -5,15 +5,23 @@ import logging
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 from typing import Optional
+from dotenv import load_dotenv
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 import pandas as pd
 
 from data_fetcher import fetch_jse_stock, fetch_forex, get_available_jse_tickers
 from signal_engine import SignalEngine
 from backtester import Backtester
+from database import init_db, check_db_connection, get_db, SessionLocal
+from services import SignalService, TradeService, PerformanceService
+import models
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -66,6 +74,52 @@ def get_cache_key(ticker: str, period: str, interval: str) -> str:
     return f"{ticker}_{period}_{interval}".lower()
 
 
+def save_signals_to_db(df: pd.DataFrame, ticker: str, period: str = "1d", interval: str = "1d"):
+    """
+    Extract signals from dataframe and save to database.
+    Non-blocking (logs errors but doesn't fail the API call).
+    """
+    try:
+        db = SessionLocal()
+        signals_to_save = []
+        
+        for idx, row in df.iterrows():
+            signal_type = row.get('signal')
+            if signal_type is None or str(signal_type).strip() in ['None', 'HOLD']:
+                signal_type = None  # Don't store HOLD signals to reduce noise
+            
+            # Only save if there's a signal
+            if signal_type:
+                signals_to_save.append({
+                    'ticker': ticker,
+                    'date': idx,
+                    'signal_type': signal_type,
+                    'close_price': float(row['Close']) if pd.notna(row['Close']) else None,
+                    'rsi': float(row['RSI_14']) if pd.notna(row.get('RSI_14')) else None,
+                    'sma_20': float(row['SMA_20']) if pd.notna(row.get('SMA_20')) else None,
+                    'sma_50': float(row['SMA_50']) if pd.notna(row.get('SMA_50')) else None,
+                    'macd': float(row['MACD']) if pd.notna(row.get('MACD')) else None,
+                    'gap_score': float(row['gap_score']) if pd.notna(row.get('gap_score')) else None,
+                    'signal_strength': 0.0,  # Can be enhanced later
+                    'period': period,
+                    'interval': interval,
+                })
+        
+        if signals_to_save:
+            SignalService.batch_create_signals(db, signals_to_save)
+            logger.info(f"Saved {len(signals_to_save)} signals for {ticker} to database")
+        
+        db.close()
+    except Exception as e:
+        logger.warning(f"Non-blocking: Failed to save signals to DB: {str(e)}")
+        # Don't raise - this is a background operation
+
+
+def get_cache_key(ticker: str, period: str, interval: str) -> str:
+    """Generate cache key."""
+    return f"{ticker}_{period}_{interval}".lower()
+
+
 def is_cache_valid(cache_entry: dict) -> bool:
     """Check if cache entry is still valid."""
     timestamp = cache_entry.get('timestamp')
@@ -95,7 +149,19 @@ def set_cache(key: str, data: pd.DataFrame):
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup/shutdown."""
     logger.info("Simtek Trading API starting up...")
+    
+    # Initialize database
+    try:
+        init_db()
+        if check_db_connection():
+            logger.info("✓ Database connection successful")
+        else:
+            logger.warning("⚠ Database connection failed - continuing without persistence")
+    except Exception as e:
+        logger.warning(f"⚠ Database initialization failed: {str(e)} - continuing without persistence")
+    
     yield
+    
     logger.info("Simtek Trading API shutting down...")
 
 
@@ -163,15 +229,19 @@ async def get_signal(
         # Generate signals
         engine = SignalEngine(df)
         df_signals = engine.generate_signals()
+        logger.info(f"JSE Signal for {ticker}: {len(df_signals)} rows, signals: {df_signals['signal'].notna().sum()}")
+        
+        # Save signals to database (non-blocking)
+        save_signals_to_db(df_signals, ticker, period=period, interval=interval)
         
         # Build history (last 90 rows)
         history = []
         for idx, row in df_signals.tail(90).iterrows():
             try:
-                close_val = float(row['Close'])
-                signal_val = row['signal']
-                rsi_val = row['RSI_14']
-                macd_val = row['MACD']
+                close_val = float(row['Close'].item() if hasattr(row['Close'], 'item') else row['Close'])
+                signal_val = row['signal'].item() if hasattr(row.get('signal'), 'item') else row.get('signal')
+                rsi_val = row['RSI_14'].item() if hasattr(row['RSI_14'], 'item') else row['RSI_14']
+                macd_val = row['MACD'].item() if hasattr(row['MACD'], 'item') else row['MACD']
                 
                 signal_strength = 0.0
                 if pd.notna(rsi_val):
@@ -277,10 +347,10 @@ async def get_forex_signal(
         history = []
         for idx, row in df_signals.tail(90).iterrows():
             try:
-                close_val = float(row['Close'])
-                signal_val = row['signal']
-                rsi_val = row['RSI_14']
-                macd_val = row['MACD']
+                close_val = float(row['Close'].item() if hasattr(row['Close'], 'item') else row['Close'])
+                signal_val = row['signal'].item() if hasattr(row.get('signal'), 'item') else row.get('signal')
+                rsi_val = row['RSI_14'].item() if hasattr(row['RSI_14'], 'item') else row['RSI_14']
+                macd_val = row['MACD'].item() if hasattr(row['MACD'], 'item') else row['MACD']
                 
                 signal_strength = 0.0
                 if pd.notna(rsi_val):
@@ -307,6 +377,35 @@ async def get_forex_signal(
                 continue
         
         # Get current signal (last row)
+        current_row = df_signals.iloc[-1]
+        current_signal = None
+        signal_value = current_row.get('signal')
+        # Check if signal_value is not null/None
+        if signal_value is not None and str(signal_value).strip() != 'None':
+            try:
+                rsi_current = current_row.get('RSI_14').item() if hasattr(current_row.get('RSI_14'), 'item') else current_row.get('RSI_14')
+                signal_strength = 0.0
+                if pd.notna(rsi_current):
+                    signal_strength = float(rsi_current) / 100.0
+                
+                current_signal = Signal(
+                    ticker=f"{from_currency}/{to_currency}",
+                    timestamp=df_signals.index[-1].isoformat(),
+                    close=float(current_row['Close'].item() if hasattr(current_row['Close'], 'item') else current_row['Close']),
+                    signal=str(signal_value),
+                    signal_strength=signal_strength,
+                    rsi=float(rsi_current) if pd.notna(rsi_current) else None,
+                    macd=float(current_row['MACD'].item() if hasattr(current_row['MACD'], 'item') else current_row['MACD']) if pd.notna(current_row.get('MACD')) else None,
+                )
+            except (ValueError, TypeError):
+                pass
+        
+        return SignalHistory(
+            ticker=f"{from_currency}/{to_currency}",
+            period=period,
+            current_signal=current_signal,
+            history=history
+        )
         current_row = df_signals.iloc[-1]
         current_signal = None
         signal_value = current_row.get('signal')
@@ -484,6 +583,233 @@ async def backtest_forex(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==================== DATABASE ENDPOINTS ====================
+
+
+@app.get("/db/status")
+async def db_status():
+    """Check database connection status."""
+    try:
+        is_connected = check_db_connection()
+        return {
+            "status": "connected" if is_connected else "disconnected",
+            "connected": is_connected
+        }
+    except Exception as e:
+        logger.error(f"Database status check failed: {str(e)}")
+        return {
+            "status": "error",
+            "connected": False,
+            "error": str(e)
+        }
+
+
+@app.get("/signals/history/{ticker}")
+async def get_signals_history(
+    ticker: str,
+    limit: int = Query(100, ge=1, le=1000),
+    signal_type: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Get historical signals from database.
+    
+    Args:
+        ticker: Stock ticker (e.g., "CPI")
+        limit: Number of signals to return (default: 100)
+        signal_type: Filter by signal type ('BUY', 'SELL', 'HOLD')
+    
+    Returns:
+        List of historical signals
+    """
+    try:
+        signals = SignalService.get_signals_by_ticker(
+            db,
+            ticker=ticker,
+            limit=limit,
+            signal_type=signal_type
+        )
+        
+        return {
+            "ticker": ticker,
+            "signal_type": signal_type,
+            "total_count": len(signals),
+            "signals": [
+                {
+                    "id": s.id,
+                    "date": s.date.isoformat(),
+                    "signal": s.signal_type,
+                    "close": s.close_price,
+                    "rsi": s.rsi,
+                    "sma_20": s.sma_20,
+                    "sma_50": s.sma_50,
+                    "macd": s.macd,
+                    "gap_score": s.gap_score,
+                    "signal_strength": s.signal_strength,
+                }
+                for s in signals
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Error fetching signal history for {ticker}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/trades/open")
+async def get_open_trades(
+    ticker: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Get all open trades.
+    
+    Args:
+        ticker: Optional filter by ticker
+    
+    Returns:
+        List of open trades
+    """
+    try:
+        trades = TradeService.get_open_trades(db, ticker=ticker)
+        
+        return {
+            "ticker": ticker,
+            "open_trades": len(trades),
+            "trades": [
+                {
+                    "id": t.id,
+                    "ticker": t.ticker,
+                    "entry_date": t.entry_date.isoformat(),
+                    "entry_price": t.entry_price,
+                    "position_size": t.position_size,
+                    "unrealized_pnl": 0,  # Would need current price to calculate
+                }
+                for t in trades
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Error fetching open trades: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/trades/history/{ticker}")
+async def get_trades_history(
+    ticker: str,
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db)
+):
+    """
+    Get closed trades history for a ticker.
+    
+    Args:
+        ticker: Stock ticker
+        limit: Number of trades to return
+    
+    Returns:
+        List of closed trades
+    """
+    try:
+        trades = TradeService.get_closed_trades(db, ticker=ticker, limit=limit)
+        
+        return {
+            "ticker": ticker,
+            "closed_trades": len(trades),
+            "trades": [
+                {
+                    "id": t.id,
+                    "entry_date": t.entry_date.isoformat(),
+                    "exit_date": t.exit_date.isoformat() if t.exit_date else None,
+                    "entry_price": t.entry_price,
+                    "exit_price": t.exit_price,
+                    "position_size": t.position_size,
+                    "pnl_amount": t.pnl_amount,
+                    "pnl_pct": t.pnl_pct,
+                    "exit_reason": t.exit_reason,
+                }
+                for t in trades
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Error fetching trade history for {ticker}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/trades/stats/{ticker}")
+async def get_trades_stats(
+    ticker: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Get trading statistics aggregated.
+    
+    Args:
+        ticker: Optional filter by ticker
+    
+    Returns:
+        Trading statistics
+    """
+    try:
+        stats = TradeService.get_trade_stats(db, ticker=ticker)
+        
+        return {
+            "ticker": ticker,
+            **stats
+        }
+    except Exception as e:
+        logger.error(f"Error fetching trade stats: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/performance/{ticker}")
+async def get_performance(
+    ticker: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get latest performance metrics for a ticker.
+    
+    Args:
+        ticker: Stock ticker
+    
+    Returns:
+        Latest performance metrics
+    """
+    try:
+        metric = PerformanceService.get_latest_metrics(db, ticker=ticker)
+        
+        if not metric:
+            return {
+                "ticker": ticker,
+                "message": "No performance data available yet"
+            }
+        
+        return {
+            "ticker": ticker,
+            "metric_date": metric.metric_date.isoformat(),
+            "total_signals": metric.total_signals,
+            "buy_signals": metric.buy_signals,
+            "sell_signals": metric.sell_signals,
+            "total_trades": metric.total_trades,
+            "winning_trades": metric.winning_trades,
+            "losing_trades": metric.losing_trades,
+            "win_rate": metric.win_rate,
+            "avg_win_pct": metric.avg_win_pct,
+            "avg_loss_pct": metric.avg_loss_pct,
+            "total_return_pct": metric.total_return_pct,
+            "max_drawdown_pct": metric.max_drawdown_pct,
+            "sharpe_ratio": metric.sharpe_ratio,
+        }
+    except Exception as e:
+        logger.error(f"Error fetching performance metrics for {ticker}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    
+    backend_port = int(os.getenv("BACKEND_PORT", "8002"))
+    backend_host = os.getenv("BACKEND_HOST", "0.0.0.0")
+    environment = os.getenv("ENVIRONMENT", "development")
+    reload = environment == "development"
+    
+    uvicorn.run("main:app", host=backend_host, port=backend_port, reload=reload)

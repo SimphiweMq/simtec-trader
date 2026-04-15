@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import axios from 'axios'
 import './TickerSelector.css'
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8002'
+
 export default function TickerSelector({ onLoad, isLoading }) {
   const [tickers, setTickers] = useState({})
   const [selectedTicker, setSelectedTicker] = useState('NPN')
@@ -13,7 +15,7 @@ export default function TickerSelector({ onLoad, isLoading }) {
   useEffect(() => {
     const fetchTickers = async () => {
       try {
-        const response = await axios.get('http://localhost:8001/tickers')
+        const response = await axios.get(`${API_BASE}/tickers`)
         setTickers(response.data.tickers || {})
       } catch (error) {
         console.error('Error fetching tickers:', error)

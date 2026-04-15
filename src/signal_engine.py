@@ -189,26 +189,28 @@ class SignalEngine:
             self.df['gap_score'] = self.df['gap_score'].fillna(0)
             
             # Get series for conditions (reset index to ensure alignment)
-            close_vals = self.df['Close'].values
-            sma_50_vals = self.df['SMA_50'].values
-            sma_20_vals = self.df['SMA_20'].values
-            rsi_vals = self.df['RSI_14'].values
-            gap_vals = self.df['gap_score'].values
+            close_vals = self.df['Close'].values.flatten()
+            sma_50_vals = self.df['SMA_50'].values.flatten()
+            sma_20_vals = self.df['SMA_20'].values.flatten()
+            rsi_vals = self.df['RSI_14'].values.flatten()
+            gap_vals = self.df['gap_score'].values.flatten()
             
             # Generate BUY signals using numpy arrays
+            # BUY: Price above 20-day MA (momentum confirmation), RSI not overbought (<70), some distance from high
             buy_condition = (
-                (close_vals > sma_50_vals) &
+                (close_vals > sma_20_vals) &
                 (rsi_vals < 70) &
-                (gap_vals > 10)
+                (gap_vals > 2)
             )
-            self.df.loc[buy_condition, 'signal'] = 'BUY'
+            self.df.loc[pd.Series(buy_condition, index=self.df.index), 'signal'] = 'BUY'
             
             # Generate SELL signals using numpy arrays
+            # SELL: Price below 20-day MA (breaking support) OR RSI overbought (>80)
             sell_condition = (
                 (close_vals < sma_20_vals) |
                 (rsi_vals > 80)
             )
-            self.df.loc[sell_condition, 'signal'] = 'SELL'
+            self.df.loc[pd.Series(sell_condition, index=self.df.index), 'signal'] = 'SELL'
             
             signal_count = (self.df['signal'].notna()).sum()
             self.logger.info(f"Generated signals: {signal_count} signal events")

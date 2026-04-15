@@ -1,0 +1,15 @@
+[build]
+  command = "cd frontend && npm run build"
+  publish = "frontend/dist"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# API proxy to backend (if needed)
+[[redirects]]
+  from = "/api/*"
+  to = "https://simtek-trader-api.herokuapp.com/api/:splat"
+  status = 200

@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: simtek-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-simtek_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-simtek_password_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-simtek_trader}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-simtek_user} -d ${POSTGRES_DB:-simtek_trader}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - simtek-network
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: simtek-backend
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-simtek_user}:${POSTGRES_PASSWORD:-simtek_password_dev}@postgres:5432/${POSTGRES_DB:-simtek_trader}
+      BACKEND_PORT: 8002
+      BACKEND_HOST: 0.0.0.0
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - simtek-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8002}
+    container_name: simtek-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - simtek-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  simtek-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

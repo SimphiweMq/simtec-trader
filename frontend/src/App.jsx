@@ -5,7 +5,7 @@ import SignalCard from './components/SignalCard'
 import PriceChart from './components/PriceChart'
 import './App.css'
 
-const API_BASE = 'http://localhost:8001'
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8002'
 
 export default function App() {
   const [selectedAsset, setSelectedAsset] = useState(null)
