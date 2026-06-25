@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react'
 import {
   LineChart,
   Line,
@@ -11,7 +12,79 @@ import {
 } from 'recharts'
 import './PriceChart.css'
 
-export default function PriceChart({ historyData }) {
+// Module-level constant — no new object reference on each render
+const COLORS = {
+  close: '#00d4ff',
+  // Colorblind-safe BUY/SELL: teal vs orange distinguishable in deuteranopia
+  buySignal: '#00BFA5',
+  sellSignal: '#FF7043',
+}
+
+const LEGEND_CONTENT_STYLE = {
+  backgroundColor: 'var(--surface-light)',
+  border: '1px solid var(--border)',
+  borderRadius: '4px',
+}
+
+const LEGEND_WRAPPER_STYLE = { paddingTop: '20px' }
+
+// Defined outside component — stable reference, no remount on every render
+function CustomTooltip({ active, payload }) {
+  if (!active || !payload || !payload.length) return null
+  const data = payload[0].payload
+  return (
+    <div className="custom-tooltip">
+      <p className="date">{data.date}</p>
+      <p style={{ color: COLORS.close }}>Close: {data.close.toFixed(2)}</p>
+      {data.rsi && (
+        <p style={{ color: COLORS.close }}>RSI: {data.rsi.toFixed(1)}</p>
+      )}
+      {data.macd && (
+        <p style={{ color: '#ff6b35' }}>MACD: {data.macd.toFixed(4)}</p>
+      )}
+      {data.signal && (
+        <p
+          style={{
+            color: data.signal === 'BUY' ? COLORS.buySignal : COLORS.sellSignal,
+            fontWeight: 'bold',
+          }}
+        >
+          Signal: {data.signal}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function PriceChart({ historyData }) {
+  // Hooks must be called unconditionally — before any early return
+  const chartData = useMemo(
+    () =>
+      historyData
+        ? historyData.map((row) => ({
+            date: new Date(row.date).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+            }),
+            close: parseFloat(row.close),
+            signal: row.signal,
+            rsi: parseFloat(row.rsi) || null,
+            macd: parseFloat(row.macd) || null,
+          }))
+        : [],
+    [historyData]
+  )
+
+  const { buyDots, sellDots } = useMemo(() => {
+    const buys = []
+    const sells = []
+    for (const item of chartData) {
+      if (item.signal === 'BUY') buys.push(item)
+      else if (item.signal === 'SELL') sells.push(item)
+    }
+    return { buyDots: buys, sellDots: sells }
+  }, [chartData])
+
   if (!historyData || historyData.length === 0) {
     return (
       <div className="price-chart-container">
@@ -20,63 +93,9 @@ export default function PriceChart({ historyData }) {
     )
   }
 
-  // Prepare data with signal markers
-  const chartData = historyData.map((row) => ({
-    date: new Date(row.date).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-    }),
-    close: parseFloat(row.close),
-    signal: row.signal,
-    rsi: parseFloat(row.rsi) || null,
-    macd: parseFloat(row.macd) || null,
-  }))
-
-  // Colors
-  const colors = {
-    close: '#00d4ff',
-    sma20: '#00d4ff',
-    sma50: '#ff6b35',
-    buySignal: '#3fb950',
-    sellSignal: '#f85149',
-  }
-
-  const CustomTooltip = ({ active, payload }) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload
-      return (
-        <div className="custom-tooltip">
-          <p className="date">{data.date}</p>
-          <p style={{ color: colors.close }}>
-            Close: {data.close.toFixed(2)}
-          </p>
-          {data.rsi && (
-            <p style={{ color: colors.sma20 }}>
-              RSI: {data.rsi.toFixed(1)}
-            </p>
-          )}
-          {data.macd && (
-            <p style={{ color: colors.sma50 }}>
-              MACD: {data.macd.toFixed(4)}
-            </p>
-          )}
-          {data.signal && (
-            <p style={{
-              color: data.signal === 'BUY' ? colors.buySignal : colors.sellSignal,
-              fontWeight: 'bold',
-            }}>
-              Signal: {data.signal}
-            </p>
-          )}
-        </div>
-      )
-    }
-    return null
-  }
-
   return (
     <div className="price-chart-container">
-      <h3>Price History & Signals (90 Days)</h3>
+      <h3>Price History &amp; Signals (90 Days)</h3>
       <ResponsiveContainer width="100%" height={400}>
         <LineChart
           data={chartData}
@@ -84,8 +103,8 @@ export default function PriceChart({ historyData }) {
         >
           <defs>
             <linearGradient id="colorClose" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={colors.close} stopOpacity={0.8} />
-              <stop offset="95%" stopColor={colors.close} stopOpacity={0} />
+              <stop offset="5%" stopColor={COLORS.close} stopOpacity={0.8} />
+              <stop offset="95%" stopColor={COLORS.close} stopOpacity={0} />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -100,69 +119,61 @@ export default function PriceChart({ historyData }) {
           />
           <Tooltip content={<CustomTooltip />} />
           <Legend
-            wrapperStyle={{ paddingTop: '20px' }}
-            contentStyle={{
-              backgroundColor: 'var(--surface-light)',
-              border: '1px solid var(--border)',
-              borderRadius: '4px',
-            }}
+            wrapperStyle={LEGEND_WRAPPER_STYLE}
+            contentStyle={LEGEND_CONTENT_STYLE}
           />
 
           <Line
             type="monotone"
             dataKey="close"
-            stroke={colors.close}
+            stroke={COLORS.close}
             dot={false}
             strokeWidth={2}
             name="Close Price"
             isAnimationActive={false}
           />
 
-          {/* BUY signals */}
-          {chartData.map((data, index) =>
-            data.signal === 'BUY' ? (
-              <ReferenceDot
-                key={`buy-${index}`}
-                x={data.date}
-                y={data.close}
-                r={6}
-                fill={colors.buySignal}
-                stroke={colors.buySignal}
-                strokeWidth={2}
-              />
-            ) : null
-          )}
+          {buyDots.map((data, index) => (
+            <ReferenceDot
+              key={`buy-${index}`}
+              x={data.date}
+              y={data.close}
+              r={6}
+              fill={COLORS.buySignal}
+              stroke={COLORS.buySignal}
+              strokeWidth={2}
+            />
+          ))}
 
-          {/* SELL signals */}
-          {chartData.map((data, index) =>
-            data.signal === 'SELL' ? (
-              <ReferenceDot
-                key={`sell-${index}`}
-                x={data.date}
-                y={data.close}
-                r={6}
-                fill={colors.sellSignal}
-                stroke={colors.sellSignal}
-                strokeWidth={2}
-              />
-            ) : null
-          )}
+          {sellDots.map((data, index) => (
+            <ReferenceDot
+              key={`sell-${index}`}
+              x={data.date}
+              y={data.close}
+              r={6}
+              fill={COLORS.sellSignal}
+              stroke={COLORS.sellSignal}
+              strokeWidth={2}
+            />
+          ))}
         </LineChart>
       </ResponsiveContainer>
       <div className="legend-info">
         <span className="legend-item">
-          <span className="dot" style={{ backgroundColor: colors.close }}></span>
+          <span className="dot" style={{ backgroundColor: COLORS.close }}></span>
           Close Price
         </span>
         <span className="legend-item">
-          <span className="dot" style={{ backgroundColor: colors.buySignal }}></span>
+          <span className="dot" style={{ backgroundColor: COLORS.buySignal }}></span>
           BUY Signal
         </span>
         <span className="legend-item">
-          <span className="dot" style={{ backgroundColor: colors.sellSignal }}></span>
+          <span className="dot" style={{ backgroundColor: COLORS.sellSignal }}></span>
           SELL Signal
         </span>
       </div>
     </div>
   )
 }
+
+export default memo(PriceChart)
