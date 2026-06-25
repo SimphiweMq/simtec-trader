@@ -57,31 +57,24 @@ function CustomTooltip({ active, payload }) {
 }
 
 function PriceChart({ historyData }) {
-  if (!historyData || historyData.length === 0) {
-    return (
-      <div className="price-chart-container">
-        <div className="chart-placeholder">No chart data available</div>
-      </div>
-    )
-  }
-
-  // Memoized — only recomputes when historyData reference changes
+  // Hooks must be called unconditionally — before any early return
   const chartData = useMemo(
     () =>
-      historyData.map((row) => ({
-        date: new Date(row.date).toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-        }),
-        close: parseFloat(row.close),
-        signal: row.signal,
-        rsi: parseFloat(row.rsi) || null,
-        macd: parseFloat(row.macd) || null,
-      })),
+      historyData
+        ? historyData.map((row) => ({
+            date: new Date(row.date).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+            }),
+            close: parseFloat(row.close),
+            signal: row.signal,
+            rsi: parseFloat(row.rsi) || null,
+            macd: parseFloat(row.macd) || null,
+          }))
+        : [],
     [historyData]
   )
 
-  // Memoized signal dot arrays — single pass, not two separate map calls
   const { buyDots, sellDots } = useMemo(() => {
     const buys = []
     const sells = []
@@ -91,6 +84,14 @@ function PriceChart({ historyData }) {
     }
     return { buyDots: buys, sellDots: sells }
   }, [chartData])
+
+  if (!historyData || historyData.length === 0) {
+    return (
+      <div className="price-chart-container">
+        <div className="chart-placeholder">No chart data available</div>
+      </div>
+    )
+  }
 
   return (
     <div className="price-chart-container">
