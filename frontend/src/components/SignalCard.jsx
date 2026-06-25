@@ -1,6 +1,7 @@
+import { memo } from 'react'
 import './SignalCard.css'
 
-export default function SignalCard({ signal, ticker }) {
+function SignalCard({ signal, ticker }) {
   if (!signal) {
     return (
       <div className="signal-card">
@@ -87,3 +88,5 @@ export default function SignalCard({ signal, ticker }) {
     </div>
   )
 }
+
+export default memo(SignalCard)

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import axios from 'axios'
 import TickerSelector from './components/TickerSelector'
 import SignalCard from './components/SignalCard'
@@ -13,7 +13,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  const handleLoad = async (asset) => {
+  const handleLoad = useCallback(async (asset) => {
     setIsLoading(true)
     setError(null)
     setSignalData(null)
@@ -46,7 +46,7 @@ export default function App() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
 
   return (
     <div className="app">
