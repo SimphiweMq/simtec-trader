@@ -1,6 +1,13 @@
 import { memo } from 'react'
 import './SignalCard.css'
 
+// Colorblind-safe palette — matches PriceChart COLORS constants
+const SIGNAL_COLORS = {
+  BUY: { fg: '#00BFA5', bg: 'rgba(0, 191, 165, 0.1)' },
+  SELL: { fg: '#FF7043', bg: 'rgba(255, 112, 67, 0.1)' },
+  HOLD: { fg: '#8b949e', bg: 'rgba(139, 148, 158, 0.1)' },
+}
+
 function SignalCard({ signal, ticker }) {
   if (!signal) {
     return (
@@ -11,18 +18,8 @@ function SignalCard({ signal, ticker }) {
   }
 
   const signalValue = signal.current_signal?.signal || 'HOLD'
-  const signalColor =
-    signalValue === 'BUY'
-      ? '#3fb950'
-      : signalValue === 'SELL'
-        ? '#f85149'
-        : '#8b949e'
-  const signalBgColor =
-    signalValue === 'BUY'
-      ? 'rgba(63, 185, 80, 0.1)'
-      : signalValue === 'SELL'
-        ? 'rgba(248, 81, 73, 0.1)'
-        : 'rgba(139, 148, 158, 0.1)'
+  const { fg: signalColor, bg: signalBgColor } =
+    SIGNAL_COLORS[signalValue] ?? SIGNAL_COLORS.HOLD
 
   const strength = signal.current_signal?.signal_strength || 0
   const close = signal.current_signal?.close?.toFixed(2) || '—'
