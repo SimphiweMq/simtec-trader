@@ -3,6 +3,7 @@ import axios from 'axios'
 import TickerSelector from './components/TickerSelector'
 import SignalCard from './components/SignalCard'
 import PriceChart from './components/PriceChart'
+import SystemHealth from './components/SystemHealth'
 import './App.css'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8002'
@@ -60,6 +61,7 @@ export default function App() {
       <main className="app-main">
         <div className="container">
           <TickerSelector onLoad={handleLoad} isLoading={isLoading} />
+          <SystemHealth />
 
           {error && (
             <div className="error-alert">

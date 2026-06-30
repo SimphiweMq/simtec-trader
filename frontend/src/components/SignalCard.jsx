@@ -1,10 +1,10 @@
 import { memo } from 'react'
 import './SignalCard.css'
 
-// Colorblind-safe palette — matches PriceChart COLORS constants
+// Trading-native palette. Color is NEVER the sole signal — text labels (BUY/SELL/HOLD) carry the meaning.
 const SIGNAL_COLORS = {
-  BUY: { fg: '#00BFA5', bg: 'rgba(0, 191, 165, 0.1)' },
-  SELL: { fg: '#FF7043', bg: 'rgba(255, 112, 67, 0.1)' },
+  BUY: { fg: '#22c55e', bg: 'rgba(34, 197, 94, 0.1)' },
+  SELL: { fg: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
   HOLD: { fg: '#8b949e', bg: 'rgba(139, 148, 158, 0.1)' },
 }
 
@@ -22,9 +22,23 @@ function SignalCard({ signal, ticker }) {
     SIGNAL_COLORS[signalValue] ?? SIGNAL_COLORS.HOLD
 
   const strength = signal.current_signal?.signal_strength || 0
-  const close = signal.current_signal?.close?.toFixed(2) || '—'
-  const rsi = signal.current_signal?.rsi?.toFixed(1) || '—'
-  const macd = signal.current_signal?.macd?.toFixed(4) || '—'
+  const closeRaw = signal.current_signal?.close
+  const close = closeRaw?.toFixed(2) || '—'
+  const rsiRaw = signal.current_signal?.rsi
+  const rsi = rsiRaw?.toFixed(1) || '—'
+  const macdRaw = signal.current_signal?.macd
+  const macd = macdRaw?.toFixed(4) || '—'
+
+  const rsiTrend =
+    rsiRaw == null ? null
+    : rsiRaw > 70 ? { label: '▲ OB', cls: 'metric-trend--bearish' }
+    : rsiRaw < 30 ? { label: '▼ OS', cls: 'metric-trend--bullish' }
+    : null
+
+  const macdTrend =
+    macdRaw == null ? null
+    : macdRaw > 0 ? { label: '▲', cls: 'metric-trend--bullish' }
+    : { label: '▼', cls: 'metric-trend--bearish' }
 
   return (
     <div className="signal-card">
@@ -62,10 +76,16 @@ function SignalCard({ signal, ticker }) {
         <div className="metric">
           <span className="metric-label">RSI(14)</span>
           <span className="metric-value">{rsi}</span>
+          {rsiTrend && (
+            <span className={`metric-trend ${rsiTrend.cls}`}>{rsiTrend.label}</span>
+          )}
         </div>
         <div className="metric">
           <span className="metric-label">MACD</span>
           <span className="metric-value">{macd}</span>
+          {macdTrend && (
+            <span className={`metric-trend ${macdTrend.cls}`}>{macdTrend.label}</span>
+          )}
         </div>
       </div>
 

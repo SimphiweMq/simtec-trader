@@ -13,11 +13,11 @@ import {
 import './PriceChart.css'
 
 // Module-level constant — no new object reference on each render
+// Color is NEVER the sole signal — legend text labels (BUY Signal / SELL Signal) carry the meaning.
 const COLORS = {
-  close: '#00d4ff',
-  // Colorblind-safe BUY/SELL: teal vs orange distinguishable in deuteranopia
-  buySignal: '#00BFA5',
-  sellSignal: '#FF7043',
+  close: '#22c55e',
+  buySignal: '#22c55e',
+  sellSignal: '#f59e0b',
 }
 
 const LEGEND_CONTENT_STYLE = {

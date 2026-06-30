@@ -184,8 +184,31 @@ app.add_middleware(
 
 @app.get("/health")
 async def health():
-    """Health check endpoint."""
-    return {"status": "ok", "version": "0.1.0"}
+    """Health check with cache and latency stats for the frontend SystemHealth panel."""
+    import time
+    start = time.time()
+
+    now = time.time()
+    timestamps = [entry["timestamp"] for entry in _cache.values() if "timestamp" in entry]
+    tickers_active = len(_cache)
+    tickers_total = len(get_available_jse_tickers())
+    last_fetch_min = round((now - max(timestamps)) / 60, 1) if timestamps else None
+    oldest_fetch_min = round((now - min(timestamps)) / 60, 1) if timestamps else None
+
+    latency_ms = round((time.time() - start) * 1000, 1)
+
+    return {
+        "status": "ok",
+        "version": "0.1.0",
+        "latency_ms": latency_ms,
+        "cache": {
+            "tickers_active": tickers_active,
+            "tickers_total": tickers_total,
+            "ttl_min": CACHE_TTL // 60,
+            "last_fetch_min": last_fetch_min,
+            "oldest_fetch_min": oldest_fetch_min,
+        },
+    }
 
 
 @app.get("/tickers")

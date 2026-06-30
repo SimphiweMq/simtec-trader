@@ -11,12 +11,22 @@
   --border: #30363d;
   --text: #e6edf3;
   --text-muted: #8b949e;
-  --accent: #00d4ff;
+  /* Trading-native accent: green (buy) / amber (sell) */
+  --accent: #22c55e;
+  --accent-dim: #16a34a;
+  --accent-sell: #f59e0b;
   --accent-orange: #ff6b35;
   --success: #3fb950;
-  --danger: #f85149;
-  --warning: #ffc107;
+  --danger: #ef4444;
+  --warning: #f59e0b;
   --info: #58a6ff;
+  /* Status dot fill vars — colorblind-safe when paired with text labels */
+  --fill-success: #22c55e;
+  --fill-warning: #f59e0b;
+  --fill-error: #ef4444;
+  /* Elevation */
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.35);
+  --shadow-card-hover: 0 8px 32px rgba(0, 0, 0, 0.45);
 }
 
 html, body {
