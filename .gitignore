@@ -149,3 +149,4 @@ frontend/*.local
 .Trashes
 ehthumbs.db
 Thumbs.db
+.gstack/

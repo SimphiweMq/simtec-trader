@@ -1,9 +1,10 @@
 .price-chart-container {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 20px;
+  border-radius: 12px;
+  padding: 24px;
   margin-bottom: 20px;
+  box-shadow: var(--shadow-card);
 }
 
 .price-chart-container h3 {

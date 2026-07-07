@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import axios from 'axios'
 import TickerSelector from './components/TickerSelector'
 import SignalCard from './components/SignalCard'
 import PriceChart from './components/PriceChart'
+import SystemHealth from './components/SystemHealth'
 import './App.css'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8002'
@@ -13,7 +14,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  const handleLoad = async (asset) => {
+  const handleLoad = useCallback(async (asset) => {
     setIsLoading(true)
     setError(null)
     setSignalData(null)
@@ -46,7 +47,7 @@ export default function App() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
 
   return (
     <div className="app">
@@ -60,6 +61,7 @@ export default function App() {
       <main className="app-main">
         <div className="container">
           <TickerSelector onLoad={handleLoad} isLoading={isLoading} />
+          <SystemHealth />
 
           {error && (
             <div className="error-alert">
