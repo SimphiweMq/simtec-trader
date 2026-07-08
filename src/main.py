@@ -188,12 +188,12 @@ async def health():
     import time
     start = time.time()
 
-    now = time.time()
+    now = datetime.now()
     timestamps = [entry["timestamp"] for entry in _cache.values() if "timestamp" in entry]
     tickers_active = len(_cache)
     tickers_total = len(get_available_jse_tickers())
-    last_fetch_min = round((now - max(timestamps)) / 60, 1) if timestamps else None
-    oldest_fetch_min = round((now - min(timestamps)) / 60, 1) if timestamps else None
+    last_fetch_min = round((now - max(timestamps)).total_seconds() / 60, 1) if timestamps else None
+    oldest_fetch_min = round((now - min(timestamps)).total_seconds / 60, 1) if timestamps else None
 
     latency_ms = round((time.time() - start) * 1000, 1)
 
