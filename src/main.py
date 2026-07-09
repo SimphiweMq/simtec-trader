@@ -193,7 +193,7 @@ async def health():
     tickers_active = len(_cache)
     tickers_total = len(get_available_jse_tickers())
     last_fetch_min = round((now - max(timestamps)).total_seconds() / 60, 1) if timestamps else None
-    oldest_fetch_min = round((now - min(timestamps)).total_seconds / 60, 1) if timestamps else None
+    oldest_fetch_min = round((now - min(timestamps)).total_seconds() / 60, 1) if timestamps else None
 
     latency_ms = round((time.time() - start) * 1000, 1)
 
