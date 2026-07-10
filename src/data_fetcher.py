@@ -79,43 +79,40 @@ def _history_with_retry(ticker: str, period: str, interval: str) -> pd.DataFrame
 def fetch_jse_stock(ticker: str, period: str = "2y", interval: str = "1d") -> pd.DataFrame:
     """
     Fetch OHLCV data for a JSE stock.
-    
+
     Args:
         ticker: JSE stock ticker (e.g., "NPN" for Naspers). .JO suffix is added if not present.
         period: Data period (default: "2y")
         interval: Data interval (default: "1d")
-    
+
     Returns:
         DataFrame with columns: Date, Open, High, Low, Close, Volume.
-        Date is the index and timezone-naive. Returns empty DataFrame on error.
+        Date is the index and timezone-naive. Returns empty DataFrame when
+        the ticker genuinely has no data (invalid/delisted).
+
+    Raises:
+        DataFetchError: on transient fetch failure (rate limit, network) so
+        callers can distinguish "couldn't fetch right now" from "not found".
     """
-    try:
-        # Append .JO suffix if not already present
-        if not ticker.endswith(".JO"):
-            ticker = f"{ticker}.JO"
-        
-        logger.info(f"Fetching JSE stock data for {ticker}...")
-        df = yf.download(ticker, period=period, interval=interval, progress=False)
-        
-        if df.empty:
-            logger.warning(f"No data returned for {ticker}")
-            return pd.DataFrame()
-        
-        # Reset index to make Date a column, then convert to timezone-naive
-        df.reset_index(inplace=True)
-        if df['Date'].dt.tz is not None:
-            df['Date'] = df['Date'].dt.tz_localize(None)
-        df.set_index('Date', inplace=True)
-        
-        # Ensure only required columns
-        df = df[['Open', 'High', 'Low', 'Close', 'Volume']]
-        
-        logger.info(f"Successfully fetched {len(df)} rows for {ticker}")
-        return df
-    
-    except Exception as e:
-        logger.error(f"Error fetching JSE stock {ticker}: {str(e)}")
+    # Append .JO suffix if not already present
+    if not ticker.endswith(".JO"):
+        ticker = f"{ticker}.JO"
+
+    logger.info(f"Fetching JSE stock data for {ticker}...")
+    df = _history_with_retry(ticker, period, interval)
+
+    if df.empty:
+        logger.warning(f"No data returned for {ticker}")
         return pd.DataFrame()
+
+    # Normalize: timezone-naive index named Date, OHLCV columns only
+    if df.index.tz is not None:
+        df.index = df.index.tz_localize(None)
+    df.index.name = 'Date'
+    df = df[['Open', 'High', 'Low', 'Close', 'Volume']]
+
+    logger.info(f"Successfully fetched {len(df)} rows for {ticker}")
+    return df
 
 
 def fetch_forex(from_currency: str, to_currency: str, period: str = "2y", interval: str = "1d") -> pd.DataFrame:
@@ -159,38 +156,35 @@ def fetch_forex(from_currency: str, to_currency: str, period: str = "2y", interv
 def fetch_index(index_ticker: str = "^J203.JO", period: str = "2y") -> pd.DataFrame:
     """
     Fetch index data.
-    
+
     Args:
         index_ticker: Index ticker (default: "^J203.JO" for FTSE/JSE All Share)
         period: Data period (default: "2y")
-    
+
     Returns:
         DataFrame with columns: Date, Open, High, Low, Close, Volume.
-        Date is the index and timezone-naive. Returns empty DataFrame on error.
+        Date is the index and timezone-naive. Returns empty DataFrame when
+        the index genuinely has no data (invalid symbol).
+
+    Raises:
+        DataFetchError: on transient fetch failure (rate limit, network) so
+        callers can distinguish "couldn't fetch right now" from "not found".
     """
-    try:
-        logger.info(f"Fetching index data for {index_ticker}...")
-        df = yf.download(index_ticker, period=period, interval="1d", progress=False)
-        
-        if df.empty:
-            logger.warning(f"No data returned for {index_ticker}")
-            return pd.DataFrame()
-        
-        # Reset index to make Date a column, then convert to timezone-naive
-        df.reset_index(inplace=True)
-        if df['Date'].dt.tz is not None:
-            df['Date'] = df['Date'].dt.tz_localize(None)
-        df.set_index('Date', inplace=True)
-        
-        # Ensure only required columns
-        df = df[['Open', 'High', 'Low', 'Close', 'Volume']]
-        
-        logger.info(f"Successfully fetched {len(df)} rows for {index_ticker}")
-        return df
-    
-    except Exception as e:
-        logger.error(f"Error fetching index {index_ticker}: {str(e)}")
+    logger.info(f"Fetching index data for {index_ticker}...")
+    df = _history_with_retry(index_ticker, period, "1d")
+
+    if df.empty:
+        logger.warning(f"No data returned for {index_ticker}")
         return pd.DataFrame()
+
+    # Normalize: timezone-naive index named Date, OHLCV columns only
+    if df.index.tz is not None:
+        df.index = df.index.tz_localize(None)
+    df.index.name = 'Date'
+    df = df[['Open', 'High', 'Low', 'Close', 'Volume']]
+
+    logger.info(f"Successfully fetched {len(df)} rows for {index_ticker}")
+    return df
 
 
 def get_available_jse_tickers() -> dict:

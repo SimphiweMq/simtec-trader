@@ -15,15 +15,15 @@ last_gate:
   name: "/review"
   result: "PASS"
   date: "2026-07-10"
-  tier: "T1"                             # forex 404-masking fix: 12/12 tests, live 200/404/503 all verified (see RESULT_TRADER_FOREX_404_FIX.md)
+  tier: "T1"                             # JSE/index 404-masking fix (this commit): 0 CRITICAL / 0 HIGH, 28/28 tests (16 new + 12 forex regression), live smoke 200/404/503 verified against a local server. Forex fix passed the same gate earlier today (see RESULT_TRADER_FOREX_404_FIX.md).
 
 # Open findings — anything known-broken or deferred. Empty list = clean.
 open_findings:
   - id: "ST-001"
     severity: "MEDIUM"
-    summary: "fetch_jse_stock() and fetch_index() retain the identical except-Exception→empty-DataFrame swallow that fetch_forex() had — transient yfinance failures (rate limit, network) still masked as 404 on all JSE stock and index endpoints. Deliberately deferred out of the forex-fix scope, NOT forgotten."
-    status: "open"
-    owner: "NewClaude"
+    summary: "JSE/index swallow bug — FIXED IN CODE at this commit, NOT yet in prod. fetch_jse_stock()/fetch_index() now use _history_with_retry() (same DataFetchError + 3x-backoff pattern as forex); /signal/{ticker} and /backtest/{ticker} map DataFetchError to 503. /review PASS, 28/28 tests, live smoke: NPN 200 real data / ZZZZQ 404 / dead-proxy 503 after 3 logged attempts on both endpoints. Prod still swallows until Harold's manual Render deploy. NOTE: fetch_index() has NO endpoint in main.py (library-level only) — API-level index tests were impossible; unit-tested instead."
+    status: "fixed-awaiting-deploy"
+    owner: "Harold (deploy)"
   - id: "ST-002"
     severity: "MEDIUM"
     summary: "requirements.txt does not pin yfinance (local 1.5.1; Render installs latest at build). The forex fix depends on Ticker.history(raise_errors=True) and the yfinance.exceptions taxonomy — an upstream breaking release would surface at deploy time. Also: Render deploy of 6fe01d3 not commit-verifiable from repo (/health has no version field); confirm 'Live' timestamp in Render console once."
@@ -31,14 +31,14 @@ open_findings:
     owner: "NewClaude"
 
 # The single next action. If Harold reads nothing else, he reads this.
-next_action: "Close ST-001: apply the same DataFetchError + retry-with-backoff pattern to fetch_jse_stock()/fetch_index() (mirror tests/test_forex_fetch_errors.py for the JSE endpoints), pinning yfinance in requirements.txt in the same task — unless Harold reprioritizes."
-next_action_tier: "T1"
+next_action: "Harold: manual Render deploy of this commit, confirm 'Live' timestamp matches it, then curl prod /signal/NPN (expect 200 real data) — then close ST-001. yfinance pin (ST-002) deliberately NOT done in this task: pinning blind to local 1.5.1 could downgrade prod below whatever live-verified version Render installed for the forex fix; check the Render build log first, then pin in a deliberate follow-up."
+next_action_tier: "T0"
 
 # Cost band for the next_action (Council cost-matrix, banded not precise)
 next_action_estimate:
-  scope: "M"
-  tokens_range: "30-60K"
-  zar_range: "R0.75-R1.50"
+  scope: "S"
+  tokens_range: "5-20K"
+  zar_range: "R0.10-R0.50"
 
 # Council role context for this repo
 monetization_candidate: true             # November 6 solution #2
@@ -62,20 +62,28 @@ verified against a running server — full evidence in
 consumes this API daily as its real signal source.
 
 ## Open findings
-- **ST-001 (MEDIUM, open):** `fetch_jse_stock()` / `fetch_index()` still have
-  the pre-fix swallow bug — transient failures masked as 404 on JSE endpoints.
-  Deferred deliberately when the forex fix was scoped; the fix pattern and its
-  test suite are ready to mirror.
-- **ST-002 (MEDIUM, open):** yfinance unpinned in `requirements.txt` (fix
-  relies on its exception taxonomy); and prod build identity is unverifiable
-  from the repo — Harold should eyeball the Render "Live" timestamp once.
+- **ST-001 (MEDIUM, fixed awaiting deploy):** JSE/index swallow bug fixed in
+  code at this commit — `fetch_jse_stock()` / `fetch_index()` now use the same
+  `_history_with_retry()` + `DataFetchError` pattern as forex, and
+  `/signal/{ticker}` + `/backtest/{ticker}` return 503 on transient failure.
+  /review PASS (0 CRITICAL / 0 HIGH), 28/28 tests, live smoke verified all
+  three paths. Prod keeps the old behavior until Harold's manual Render
+  deploy. Discovered en route: `fetch_index()` has no endpoint in `main.py` —
+  it is a library function with no production caller, so index coverage is
+  unit-level only (no route to integration-test).
+- **ST-002 (MEDIUM, open):** yfinance unpinned in `requirements.txt`.
+  Deliberately NOT pinned in the ST-001 task: prod was live-verified on
+  whatever version Render installed at the forex deploy, which may be newer
+  than local 1.5.1 — a blind pin could downgrade prod. Check Render's build
+  log for the installed version, then pin deliberately.
 - Known LOWs (pre-existing, untouched): duplicate `get_cache_key` def and dead
   code after `return` in `main.py`.
 
 ## What's next
-Fix ST-001 with the same `DataFetchError` + retry pattern, pin yfinance in the
-same task. Then the JSE endpoints stop lying about transient failures too.
+Harold deploys this commit on Render (manual), confirms the "Live" timestamp
+matches, curls prod `/signal/NPN` for 200 with real data — then ST-001 closes.
 
 ## Gate history (most recent first)
+- 2026-07-10 · /review (JSE/index 404-masking fix) · PASS · T1
 - 2026-07-10 · /review (forex 404-masking fix) · PASS · T1
 - (earlier gates in git log)

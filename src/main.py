@@ -323,6 +323,12 @@ async def get_signal(
     
     except HTTPException:
         raise
+    except DataFetchError as e:
+        logger.error(f"Transient fetch failure for {ticker}: {str(e)}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Market data source temporarily unavailable for {ticker}; please retry shortly"
+        )
     except Exception as e:
         logger.error(f"Error fetching signal for {ticker}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -536,6 +542,12 @@ async def backtest_stock(
     
     except HTTPException:
         raise
+    except DataFetchError as e:
+        logger.error(f"Transient fetch failure for {ticker}: {str(e)}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Market data source temporarily unavailable for {ticker}; please retry shortly"
+        )
     except Exception as e:
         logger.error(f"Error running backtest for {ticker}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
