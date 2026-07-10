@@ -19,19 +19,19 @@ last_gate:
 
 # Open findings — anything known-broken or deferred. Empty list = clean.
 open_findings:
-  - id: "ST-003"
-    severity: "MEDIUM"
-    summary: "PROD: invalid symbols return 503 after 3 retries (~7s) instead of the 404 contract — verified on /signal/ZZZZQ, /signal/forex/XQZ/QQW, /signal/XQZW. Locally the same requests correctly 404. Harold's call 2026-07-10: same version + same code + different behavior means the cause is ENVIRONMENT-LEVEL (Yahoo treating Render's outbound IP differently — rate-limit/block shaping the response so yfinance raises a non-no-data exception), NOT package drift — version-pin plan DROPPED. Do not fix blind: capture the real exception from Render's environment first. The retry loop already logs it — every attempt logs the underlying exception repr; a probe at 2026-07-10 17:22:25 UTC (XQZW) left 4 such lines in Render's service logs. Get the repr (Harold pastes the log lines, or shell into the instance), THEN classify. Note: the ~7s is fully explained by the deliberate 2s+4s backoff — timing alone is not evidence of Yahoo slowness. Impact bounded: valid tickers 200, real transients 503, consumers only request valid tickers."
+  - id: "ST-004"
+    severity: "LOW"
+    summary: "Invalid-symbol 404 contract UNVERIFIED in prod (not broken — unreachable so far): every prod probe to date hit Yahoo's rate limiter (YFRateLimitError, per Render logs) before symbol validity was ever evaluated. Verify with the quiet-window protocol: 60+ min no probes → canary a valid UNCACHED ticker (200 = Yahoo serving Render's IP) → exactly ONE invalid probe → read status + Render log line ('No data exists' + 404 = confirmed; YFRateLimitError + 503 = still limited, stop). One probe is definitive because the two outcomes log differently. WATCH ITEM attached: Yahoo rate-limits Render's shared outbound IP in bursts (valid NPN fetched 200 between limited probes) — if valid tickers start 503ing in normal use, that becomes an availability finding; 60-min cache + YT pipeline skip-day currently absorb it."
     status: "open"
-    owner: "NewClaude (blocked on Render log access)"
+    owner: "NewClaude"
   - id: "ST-002"
     severity: "LOW"
-    summary: "requirements.txt does not pin yfinance. Downgraded from MEDIUM and DECOUPLED from ST-003 per Harold 2026-07-10 (cause is environment-level, not version drift). Pin deliberately once ST-003's evidence is in — not as a fix for it."
+    summary: "requirements.txt does not pin yfinance. Decoupled from the (closed) ST-003 per Harold 2026-07-10. Pin deliberately as hygiene in some future task."
     status: "open"
     owner: "NewClaude"
 
 # The single next action. If Harold reads nothing else, he reads this.
-next_action: "ST-003 evidence capture: pull the 'Transient fetch failure for XQZW.JO (attempt 1/3): <repr>' lines from Render service logs around 2026-07-10 17:22:18-25 UTC (Harold pastes them, or shell into the instance and hit /signal/XQZW again). The repr names the real exception class + message from Render's environment; classify and scope the actual fix from that, not from local behavior."
+next_action: "Run the ST-004 quiet-window test (60+ min no probes, valid-uncached canary, then ONE invalid probe, read Render log line) to confirm the invalid-symbol 404 contract in prod. Zero code changes expected."
 next_action_tier: "T0"
 
 # Cost band for the next_action (Council cost-matrix, banded not precise)
@@ -62,31 +62,33 @@ verified against a running server — full evidence in
 consumes this API daily as its real signal source.
 
 ## Open findings
-- **ST-003 (MEDIUM, open, evidence-capture phase):** prod returns
-  503-after-retries (~7s) for INVALID symbols instead of 404 — verified on
-  `/signal/ZZZZQ`, `/signal/forex/XQZ/QQW`, `/signal/XQZW`; locally the same
-  requests 404 correctly. Harold's redirect (2026-07-10): same version + same
-  code + different behavior ⇒ environment-level cause (Yahoo responding
-  differently to Render's outbound IP), NOT package drift — the version-pin
-  fix plan is dropped. Rule: don't fix blind. The deployed retry loop already
-  logs the real underlying exception (`repr`) on every attempt; a probe at
-  17:22:25 UTC left those lines in Render's service logs. Next step is
-  reading them (Harold pastes, or shell into the instance), then scoping the
-  fix from the actual exception class — not from local guesses. The ~7s
-  timing is the deliberate 2s+4s backoff, not evidence of Yahoo slowness.
-- **ST-002 (LOW, open):** yfinance unpinned. Downgraded and decoupled from
-  ST-003 per Harold — pin deliberately later; it is not the ST-003 fix.
+- **ST-004 (LOW, open):** invalid-symbol 404 contract unverified in prod —
+  every probe so far was rate-limited before validity was evaluated. Run the
+  quiet-window protocol (see YAML) for a definitive single-probe answer.
+  Watch item: if Yahoo's bursty rate-limiting of Render's IP starts hitting
+  valid tickers in normal use, escalate to an availability finding.
+- **ST-002 (LOW, open):** yfinance unpinned. Hygiene, decoupled, later.
 - Known LOWs (pre-existing, untouched): duplicate `get_cache_key` def and dead
   code after `return` in `main.py`.
 
 ## Closed findings
+- **ST-003** (was MEDIUM, closed 2026-07-10 — NOT A BUG): prod's
+  503-on-invalid-symbol turned out to be **correct behavior**. Render logs
+  showed the underlying exception is `YFRateLimitError` — Yahoo rate-limiting
+  Render's outbound IP — which is the textbook transient case the fix exists
+  for (it's the exact exception the test suite uses to prove the 503 path).
+  The invalid ticker was never evaluated; Yahoo refused the request first.
+  Local 404s differed because the home IP isn't rate-limited. Residual
+  verification moved to ST-004. Self-observation note for future verifiers:
+  each invalid-symbol probe burns 3 Yahoo calls, so probe barrages sustain
+  the very rate limit being investigated — space probes 60+ min apart.
 - **ST-001** (was MEDIUM): JSE/index swallow bug — transient failures masked
   as 404. Fixed in `19506f0` (same `_history_with_retry()` + `DataFetchError`
   pattern as forex, `/signal/{ticker}` + `/backtest/{ticker}` → 503 on
   transient). /review PASS, 28/28 tests, local smoke 200/404/503. Deploy
   verified in prod 2026-07-10 evening: process restart observed, new 503
   contract live, `/signal/NPN` + `/backtest/NPN` 200 with real data. Closed
-  2026-07-10. (Its deploy verification is what surfaced ST-003.)
+  2026-07-10. (Its deploy verification is what surfaced ST-003 → ST-004.)
 
 ## Decisions
 - 2026-07-10 — Harold: `fetch_index()` intentionally has no exposed endpoint —
@@ -94,9 +96,9 @@ consumes this API daily as its real signal source.
   pattern, but deliberately not wired to `main.py`.
 
 ## What's next
-Read the real exception out of Render's logs (probe timestamp 2026-07-10
-17:22:18–25 UTC, ticker XQZW.JO, four log lines carrying the repr). Classify
-from evidence, then scope the actual ST-003 fix.
+Quiet-window test for ST-004 (60+ min silence → valid-uncached canary → one
+invalid probe → read the Render log line). Expected outcome: 404 confirmed,
+zero code changes.
 
 ## Gate history (most recent first)
 - 2026-07-10 · /review (JSE/index 404-masking fix) · PASS · T1
