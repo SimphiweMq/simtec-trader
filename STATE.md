@@ -8,7 +8,7 @@ updated_by: "NewClaude"
 # Where the project is in its lifecycle
 phase: "live-hardening"
 live_url: "https://simtek-trader-api.onrender.com"
-production_commit: "6fe01d3"             # HEAD of main (forex 404/503 fix). Per VP handoff, Harold deployed it today; API verified live + healthy 2026-07-10, but /health exposes no commit/version field, so the deployed build identity is not independently verifiable from this repo — see ST-002.
+production_commit: "19506f0"             # JSE/index fix. Deploy VERIFIED live 2026-07-10 evening: process restart observed (/health in-memory cache emptied), and prod serves the 503 error string that only exists in this commit. /signal/NPN 200 real data, /backtest/NPN 200.
 
 # Last gate this repo passed (per Council tiered-gate model)
 last_gate:
@@ -19,26 +19,26 @@ last_gate:
 
 # Open findings — anything known-broken or deferred. Empty list = clean.
 open_findings:
-  - id: "ST-001"
+  - id: "ST-003"
     severity: "MEDIUM"
-    summary: "JSE/index swallow bug — FIXED IN CODE at this commit, NOT yet in prod. fetch_jse_stock()/fetch_index() now use _history_with_retry() (same DataFetchError + 3x-backoff pattern as forex); /signal/{ticker} and /backtest/{ticker} map DataFetchError to 503. /review PASS, 28/28 tests, live smoke: NPN 200 real data / ZZZZQ 404 / dead-proxy 503 after 3 logged attempts on both endpoints. Prod still swallows until Harold's manual Render deploy. NOTE: fetch_index() has NO endpoint in main.py (library-level only) — API-level index tests were impossible; unit-tested instead."
-    status: "fixed-awaiting-deploy"
-    owner: "Harold (deploy)"
+    summary: "PROD REGRESSION (found during ST-001 deploy verification, 2026-07-10): invalid symbols return 503 after 3 pointless retries (~7s) instead of the 404 contract — verified on BOTH /signal/ZZZZQ and /signal/forex/XQZ/QQW. Locally (yfinance 1.5.1) the same requests correctly 404. Strong hypothesis: prod's yfinance (unpinned, Render installs latest) raises a different exception type for missing symbols, so _NO_DATA_ERRORS misses it and it's misclassified as transient. This is ST-002's risk materialized. Impact bounded: valid tickers 200, transient errors 503 (correct), YT pipeline and frontend only request valid tickers; but the 404 contract is broken and invalid requests burn 3 Yahoo calls each. Note this means the forex fix's invalid-pair 404 was only ever verified locally, never in prod."
+    status: "open"
+    owner: "NewClaude"
   - id: "ST-002"
     severity: "MEDIUM"
-    summary: "requirements.txt does not pin yfinance (local 1.5.1; Render installs latest at build). The forex fix depends on Ticker.history(raise_errors=True) and the yfinance.exceptions taxonomy — an upstream breaking release would surface at deploy time. Also: Render deploy of 6fe01d3 not commit-verifiable from repo (/health has no version field); confirm 'Live' timestamp in Render console once."
+    summary: "requirements.txt does not pin yfinance (local 1.5.1; Render installs latest at build). No longer theoretical — see ST-003. Fix together: read the installed version from Render's build log, reproduce ST-003 locally against that version, then extend _NO_DATA_ERRORS and/or pin, redeploy, and verify invalid symbols 404 IN PROD (add that probe to the deploy checklist)."
     status: "open"
     owner: "NewClaude"
 
 # The single next action. If Harold reads nothing else, he reads this.
-next_action: "Harold: manual Render deploy of this commit, confirm 'Live' timestamp matches it, then curl prod /signal/NPN (expect 200 real data) — then close ST-001. yfinance pin (ST-002) deliberately NOT done in this task: pinning blind to local 1.5.1 could downgrade prod below whatever live-verified version Render installed for the forex fix; check the Render build log first, then pin in a deliberate follow-up."
-next_action_tier: "T0"
+next_action: "Close ST-003 + ST-002 together: get prod's yfinance version from the Render build log, reproduce the invalid-symbol misclassification locally on that version, extend _NO_DATA_ERRORS (and pin yfinance), redeploy, verify prod: invalid ticker AND invalid forex pair both 404, valid 200."
+next_action_tier: "T1"
 
 # Cost band for the next_action (Council cost-matrix, banded not precise)
 next_action_estimate:
-  scope: "S"
-  tokens_range: "5-20K"
-  zar_range: "R0.10-R0.50"
+  scope: "M"
+  tokens_range: "20-50K"
+  zar_range: "R0.50-R1.25"
 
 # Council role context for this repo
 monetization_candidate: true             # November 6 solution #2
@@ -62,26 +62,39 @@ verified against a running server — full evidence in
 consumes this API daily as its real signal source.
 
 ## Open findings
-- **ST-001 (MEDIUM, fixed awaiting deploy):** JSE/index swallow bug fixed in
-  code at this commit — `fetch_jse_stock()` / `fetch_index()` now use the same
-  `_history_with_retry()` + `DataFetchError` pattern as forex, and
-  `/signal/{ticker}` + `/backtest/{ticker}` return 503 on transient failure.
-  /review PASS (0 CRITICAL / 0 HIGH), 28/28 tests, live smoke verified all
-  three paths. Prod keeps the old behavior until Harold's manual Render
-  deploy. Discovered en route: `fetch_index()` has no endpoint in `main.py` —
-  it is a library function with no production caller, so index coverage is
-  unit-level only (no route to integration-test).
-- **ST-002 (MEDIUM, open):** yfinance unpinned in `requirements.txt`.
-  Deliberately NOT pinned in the ST-001 task: prod was live-verified on
-  whatever version Render installed at the forex deploy, which may be newer
-  than local 1.5.1 — a blind pin could downgrade prod. Check Render's build
-  log for the installed version, then pin deliberately.
+- **ST-003 (MEDIUM, open):** prod returns 503-after-retries (~7s) for INVALID
+  symbols instead of 404 — verified on both `/signal/ZZZZQ` and
+  `/signal/forex/XQZ/QQW` right after the ST-001 deploy. Locally the same
+  requests 404 correctly, so prod's (unpinned, newer) yfinance almost
+  certainly raises a missing-symbol exception type that `_NO_DATA_ERRORS`
+  doesn't cover. ST-002's risk, no longer hypothetical. Bounded impact: valid
+  tickers work, real transient errors are handled correctly, and the API's
+  actual consumers only request valid tickers.
+- **ST-002 (MEDIUM, open):** yfinance unpinned. Fix together with ST-003:
+  read the installed version from Render's build log, reproduce locally,
+  extend `_NO_DATA_ERRORS` and/or pin, redeploy, verify invalid symbols 404
+  in prod.
 - Known LOWs (pre-existing, untouched): duplicate `get_cache_key` def and dead
   code after `return` in `main.py`.
 
+## Closed findings
+- **ST-001** (was MEDIUM): JSE/index swallow bug — transient failures masked
+  as 404. Fixed in `19506f0` (same `_history_with_retry()` + `DataFetchError`
+  pattern as forex, `/signal/{ticker}` + `/backtest/{ticker}` → 503 on
+  transient). /review PASS, 28/28 tests, local smoke 200/404/503. Deploy
+  verified in prod 2026-07-10 evening: process restart observed, new 503
+  contract live, `/signal/NPN` + `/backtest/NPN` 200 with real data. Closed
+  2026-07-10. (Its deploy verification is what surfaced ST-003.)
+
+## Decisions
+- 2026-07-10 — Harold: `fetch_index()` intentionally has no exposed endpoint —
+  not needed. Function fixed and tested for consistency with the swallow-bug
+  pattern, but deliberately not wired to `main.py`.
+
 ## What's next
-Harold deploys this commit on Render (manual), confirms the "Live" timestamp
-matches, curls prod `/signal/NPN` for 200 with real data — then ST-001 closes.
+Close ST-003 + ST-002 as one task: align on prod's actual yfinance version,
+broaden the no-data classification (and pin), redeploy, and this time verify
+the invalid-symbol 404 contract in prod, not just locally.
 
 ## Gate history (most recent first)
 - 2026-07-10 · /review (JSE/index 404-masking fix) · PASS · T1
