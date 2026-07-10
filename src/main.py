@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 import pandas as pd
 
-from data_fetcher import fetch_jse_stock, fetch_forex, get_available_jse_tickers
+from data_fetcher import DataFetchError, fetch_jse_stock, fetch_forex, get_available_jse_tickers
 from signal_engine import SignalEngine
 from backtester import Backtester
 from database import init_db, check_db_connection, get_db, SessionLocal
@@ -461,6 +461,12 @@ async def get_forex_signal(
     
     except HTTPException:
         raise
+    except DataFetchError as e:
+        logger.error(f"Transient fetch failure for {from_currency}/{to_currency}: {str(e)}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Market data source temporarily unavailable for {from_currency}/{to_currency}; please retry shortly"
+        )
     except Exception as e:
         logger.error(f"Error fetching signal for {from_currency}/{to_currency}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -601,6 +607,12 @@ async def backtest_forex(
     
     except HTTPException:
         raise
+    except DataFetchError as e:
+        logger.error(f"Transient fetch failure for {from_currency}/{to_currency}: {str(e)}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Market data source temporarily unavailable for {from_currency}/{to_currency}; please retry shortly"
+        )
     except Exception as e:
         logger.error(f"Error running backtest for {from_currency}/{to_currency}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

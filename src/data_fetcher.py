@@ -1,12 +1,79 @@
 """Data fetcher module for retrieving market data."""
 
+import logging
+import time
+
 import pandas as pd
 import yfinance as yf
-import logging
+from yfinance.exceptions import (
+    YFInvalidPeriodError,
+    YFPricesMissingError,
+    YFTickerMissingError,
+    YFTzMissingError,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Bounded retry policy for transient upstream failures (rate limits, network).
+MAX_FETCH_RETRIES = 3
+RETRY_BACKOFF_SECONDS = 2.0
+
+# yfinance errors that mean "this symbol/request has no data" — permanent,
+# not worth retrying, and must keep mapping to the caller's 404 path.
+_NO_DATA_ERRORS = (
+    YFPricesMissingError,
+    YFTickerMissingError,
+    YFTzMissingError,
+    YFInvalidPeriodError,
+)
+
+
+class DataFetchError(Exception):
+    """Transient failure fetching market data (rate limit, network, upstream).
+
+    Distinct from "no data exists for this symbol": callers should map this
+    to 502/503, never 404.
+    """
+
+
+def _history_with_retry(ticker: str, period: str, interval: str) -> pd.DataFrame:
+    """
+    Fetch price history with raise_errors=True so failures are visible,
+    retrying transient errors with linear backoff.
+
+    Returns:
+        The history DataFrame, or an empty DataFrame when yfinance reports
+        the symbol genuinely has no data (delisted/invalid/bad period).
+
+    Raises:
+        DataFetchError: after MAX_FETCH_RETRIES transient failures.
+    """
+    last_error: Exception | None = None
+    for attempt in range(1, MAX_FETCH_RETRIES + 1):
+        try:
+            return yf.Ticker(ticker).history(
+                period=period, interval=interval, actions=False, raise_errors=True
+            )
+        except _NO_DATA_ERRORS as e:
+            logger.warning(f"No data exists for {ticker}: {e}")
+            return pd.DataFrame()
+        except Exception as e:
+            last_error = e
+            logger.warning(
+                f"Transient fetch failure for {ticker} "
+                f"(attempt {attempt}/{MAX_FETCH_RETRIES}): {e!r}"
+            )
+            if attempt < MAX_FETCH_RETRIES:
+                time.sleep(RETRY_BACKOFF_SECONDS * attempt)
+
+    logger.error(
+        f"All {MAX_FETCH_RETRIES} fetch attempts failed for {ticker}: {last_error!r}"
+    )
+    raise DataFetchError(
+        f"Failed to fetch data for {ticker} after {MAX_FETCH_RETRIES} attempts: {last_error}"
+    ) from last_error
 
 
 def fetch_jse_stock(ticker: str, period: str = "2y", interval: str = "1d") -> pd.DataFrame:
@@ -63,34 +130,30 @@ def fetch_forex(from_currency: str, to_currency: str, period: str = "2y", interv
     
     Returns:
         DataFrame with columns: Date, Open, High, Low, Close, Volume.
-        Date is the index and timezone-naive. Returns empty DataFrame on error.
+        Date is the index and timezone-naive. Returns empty DataFrame when
+        the pair genuinely has no data (invalid pair).
+
+    Raises:
+        DataFetchError: on transient fetch failure (rate limit, network) so
+        callers can distinguish "couldn't fetch right now" from "not found".
     """
-    try:
-        # Construct forex ticker symbol
-        forex_ticker = f"{from_currency}{to_currency}=X"
-        
-        logger.info(f"Fetching forex data for {forex_ticker}...")
-        df = yf.download(forex_ticker, period=period, interval=interval, progress=False)
-        
-        if df.empty:
-            logger.warning(f"No data returned for {forex_ticker}")
-            return pd.DataFrame()
-        
-        # Reset index to make Date a column, then convert to timezone-naive
-        df.reset_index(inplace=True)
-        if df['Date'].dt.tz is not None:
-            df['Date'] = df['Date'].dt.tz_localize(None)
-        df.set_index('Date', inplace=True)
-        
-        # Ensure only required columns
-        df = df[['Open', 'High', 'Low', 'Close', 'Volume']]
-        
-        logger.info(f"Successfully fetched {len(df)} rows for {forex_ticker}")
-        return df
-    
-    except Exception as e:
-        logger.error(f"Error fetching forex {from_currency}{to_currency}: {str(e)}")
+    forex_ticker = f"{from_currency}{to_currency}=X"
+
+    logger.info(f"Fetching forex data for {forex_ticker}...")
+    df = _history_with_retry(forex_ticker, period, interval)
+
+    if df.empty:
+        logger.warning(f"No data returned for {forex_ticker}")
         return pd.DataFrame()
+
+    # Normalize: timezone-naive index named Date, OHLCV columns only
+    if df.index.tz is not None:
+        df.index = df.index.tz_localize(None)
+    df.index.name = 'Date'
+    df = df[['Open', 'High', 'Low', 'Close', 'Volume']]
+
+    logger.info(f"Successfully fetched {len(df)} rows for {forex_ticker}")
+    return df
 
 
 def fetch_index(index_ticker: str = "^J203.JO", period: str = "2y") -> pd.DataFrame:
